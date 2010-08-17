@@ -28,3 +28,5 @@ BOARD_SYSTEM_DEVICE := /dev/block/mmcblk1p21
 BOARD_SYSTEM_FILESYSTEM := auto
 BOARD_CACHE_DEVICE := /dev/block/cache
 BOARD_CACHE_FILESYSTEM := auto
+
+BOARD_HIJACK_RECOVERY_PATH := /preinstall/recovery
