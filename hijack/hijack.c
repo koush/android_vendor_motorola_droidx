@@ -40,7 +40,7 @@
 int
 exec_and_wait(char** argp)
 {
-  pid_t pid;
+    pid_t pid;
     sig_t intsave, quitsave;
     sigset_t mask, omask;
     int pstat;
@@ -148,5 +148,6 @@ int main(int argc, char** argv) {
     
     argp[0] = real_executable;
     
+    // should clean up memory leaks, but it really doesn't matter since the process immediately exits.
     return exec_and_wait(argp);
 }
