@@ -93,9 +93,13 @@ int main(int argc, char** argv) {
     }
 
     char cmd[PATH_MAX];
-    if (0 == stat(RECOVERY_MODE_FILE, &info)) {
-        remove(RECOVERY_MODE_FILE);
+    if (0 != stat(RECOVERY_MODE_FILE, &info)) {
+        // If the marker file does not exist, boot into recovery mode. Then create the file, so we don't attempt
+        // to boot into recovery again.
         sprintf(cmd, "%s 2 0 %s", UPDATE_BINARY, UPDATE_PACKAGE);
+        FILE *f = fopen(RECOVERY_MODE_FILE, "wb");
+        if (f != NULL)
+            fclose(f);
         
         char* remount_root_args[] = { "/system/bin/hijack", "mount", "-orw,remount", "/", NULL };
         //mount_main(3, remount_root_args);
@@ -124,6 +128,14 @@ int main(int argc, char** argv) {
         char* updater_args[] = { UPDATE_BINARY, "2", "0", UPDATE_PACKAGE, NULL };
         return exec_and_wait(updater_args);
     }
+    // The recovery file marker does exist, so let's not boot into recovery mode.
+    // However, let's create the file, so next boot we will boot into recovery mode.
+    // the accompanying application that listens for the android boot event can then delete
+    // this file to prevent this.
+    // The end result is that if system is broken (but recoverably broken), it will boot into recovery
+    // after failing to boot.
+    // If the app is not installed, it will alternate between booting into recovery and booting into android.
+    remove(RECOVERY_MODE_FILE);
     
     char real_executable[PATH_MAX];
     sprintf(real_executable, "%s.bin", hijacked_executable);
