@@ -34,6 +34,7 @@
 #include <cutils/properties.h>
 
 #define RECOVERY_MODE_FILE "/data/.recovery_mode"
+
 #define UPDATE_BINARY BOARD_HIJACK_RECOVERY_PATH"/update-binary"
 #define UPDATE_PACKAGE BOARD_HIJACK_RECOVERY_PATH"/recovery.zip"
 
@@ -67,7 +68,19 @@ exec_and_wait(char** argp)
     return (pid == -1 ? -1 : pstat);
 }
 
+void remount_root() {
+    char* remount_root_args[] = { "/system/bin/hijack", "mount", "-orw,remount", "/", NULL };
+    exec_and_wait(remount_root_args);
+}
+
 typedef char* string;
+
+void mark_file(char* filename) {
+    FILE *f = fopen(filename, "wb");
+    fwrite("1", 1, 1, f);
+    if (f != NULL)
+        fclose(f);
+}
 
 int main(int argc, char** argv) {
     char* hijacked_executable = argv[0];
@@ -91,52 +104,40 @@ int main(int argc, char** argv) {
         printf("Hijack!\n");
         return 0;
     }
-
-    char cmd[PATH_MAX];
-    if (0 != stat(RECOVERY_MODE_FILE, &info)) {
-        // If the marker file does not exist, boot into recovery mode. Then create the file, so we don't attempt
-        // to boot into recovery again.
-        sprintf(cmd, "%s 2 0 %s", UPDATE_BINARY, UPDATE_PACKAGE);
-        FILE *f = fopen(RECOVERY_MODE_FILE, "wb");
-        if (f != NULL)
-            fclose(f);
-        
-        char* remount_root_args[] = { "/system/bin/hijack", "mount", "-orw,remount", "/", NULL };
-        //mount_main(3, remount_root_args);
-        //__system("/system/bin/hijack mount -orw,remount /");
-        exec_and_wait(remount_root_args);
-
-        mkdir("/preinstall", S_IRWXU);
-        mkdir("/tmp", S_IRWXU);
-        mkdir("/res", S_IRWXU);
-        mkdir("/res/images", S_IRWXU);
-        remove("/etc");
-        mkdir("/etc", S_IRWXU);
-        rename("/sbin/adbd", "/sbin/adbd.old");
-        property_set("ctl.stop", "runtime");
-        property_set("ctl.stop", "zygote");
-        property_set("persist.service.adb.enable", "1");
-
-        char* mount_preinstall_args[] = { "/system/bin/hijack", "mount", "/dev/block/preinstall", "/preinstall", NULL };
-        //mount_main(3, mount_preinstall_args);
-        //__system("/system/bin/hijack mount /dev/block/preinstall /preinstall");
-        exec_and_wait(mount_preinstall_args);
-
-        char* umount_args[] = { "/system/bin/hijack", "umount", "-l", "/system", NULL };
-        exec_and_wait(umount_args);
-
-        char* updater_args[] = { UPDATE_BINARY, "2", "0", UPDATE_PACKAGE, NULL };
-        return exec_and_wait(updater_args);
-    }
-    // The recovery file marker does exist, so let's not boot into recovery mode.
-    // However, let's create the file, so next boot we will boot into recovery mode.
-    // the accompanying application that listens for the android boot event can then delete
-    // this file to prevent this.
-    // The end result is that if system is broken (but recoverably broken), it will boot into recovery
-    // after failing to boot.
-    // If the app is not installed, it will alternate between booting into recovery and booting into android.
-    remove(RECOVERY_MODE_FILE);
     
+    // check to see if hijack was already run, and if so, just continue on.
+    if (argc >= 3 && 0 == strcmp(argv[2], "cache")) {
+        if (0 == stat(RECOVERY_MODE_FILE, &info)) {
+            // don't boot into recovery again
+            remove(RECOVERY_MODE_FILE);
+            remount_root();
+
+            mkdir("/preinstall", S_IRWXU);
+            mkdir("/tmp", S_IRWXU);
+            mkdir("/res", S_IRWXU);
+            mkdir("/res/images", S_IRWXU);
+            remove("/etc");
+            mkdir("/etc", S_IRWXU);
+            rename("/sbin/adbd", "/sbin/adbd.old");
+            property_set("ctl.stop", "runtime");
+            property_set("ctl.stop", "zygote");
+            property_set("persist.service.adb.enable", "1");
+
+            char* mount_preinstall_args[] = { "/system/bin/hijack", "mount", "/dev/block/preinstall", "/preinstall", NULL };
+            exec_and_wait(mount_preinstall_args);
+
+            // this will prevent hijack from being called again
+            char* umount_args[] = { "/system/bin/hijack", "umount", "-l", "/system", NULL };
+            exec_and_wait(umount_args);
+
+            char* updater_args[] = { UPDATE_BINARY, "2", "0", UPDATE_PACKAGE, NULL };
+            return exec_and_wait(updater_args);
+        }
+
+        // mark it in case we don't boot
+        mark_file(RECOVERY_MODE_FILE);
+    }
+
     char real_executable[PATH_MAX];
     sprintf(real_executable, "%s.bin", hijacked_executable);
     string* argp = (string*)malloc(sizeof(string) * (argc + 1));
