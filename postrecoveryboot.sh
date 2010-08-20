@@ -16,11 +16,17 @@ done
 busybox mount -orw,remount /
 rm -r /tmp
 mkdir -p tmp
+rm sdcard
+mkdir sdcard
+
 
 # Restart with root hacked adbd
-mount -orw,remount /
-busybox kill $(busybox ps | busybox grep adbd)
 echo msc_adb > /dev/usb_device_mode
 touch /tmp/recovery.log
 sync
-/sbin/adbd recovery &
+
+NEEDS_ADBD=$(ps | grep adbd | grep -v grep)
+if [ -z "$NEEDS_ADBD" ]
+then
+    /sbin/adbd recovery &
+fi
